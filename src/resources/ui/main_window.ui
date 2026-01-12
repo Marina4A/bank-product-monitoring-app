@@ -1,0 +1,938 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1051</width>
+    <height>720</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>BankMonitor - Мониторинг банковских продуктов</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true"/>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <property name="spacing">
+     <number>5</number>
+    </property>
+    <property name="leftMargin">
+     <number>5</number>
+    </property>
+    <property name="topMargin">
+     <number>5</number>
+    </property>
+    <property name="rightMargin">
+     <number>5</number>
+    </property>
+    <property name="bottomMargin">
+     <number>5</number>
+    </property>
+    <item>
+     <layout class="QVBoxLayout" name="headerLayout">
+      <item>
+       <layout class="QHBoxLayout" name="headerTopLayout">
+        <property name="spacing">
+         <number>6</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="label">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>30</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>30</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <pointsize>11</pointsize>
+           </font>
+          </property>
+          <property name="text">
+           <string>BankMonitor Мониторинг банковских продуктов</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="headerSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QTabWidget" name="mainTabWidget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="tableTab">
+       <attribute name="title">
+        <string>Таблица</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="tableTabLayout">
+        <item>
+         <layout class="QHBoxLayout" name="filtersLayout">
+          <item>
+           <widget class="QLabel" name="bankLabel">
+            <property name="text">
+             <string>Банк:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="bankComboBox">
+            <item>
+             <property name="text">
+              <string>Все банки</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Сбербанк</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>ТБанк</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>ВТБ</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Альфа-Банк</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Газпромбанк</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="categoryLabel">
+            <property name="text">
+             <string>Категория:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="categoryComboBox">
+            <item>
+             <property name="text">
+              <string>Все</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Кредитные продукты</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Дебетовые карты</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Кредитные карты</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="refreshButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Обновить</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="exportButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Экспорт</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="recordsCountLabel">
+            <property name="text">
+             <string>0 записей найдено</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="filtersSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="statsLayout">
+          <item>
+           <widget class="QFrame" name="statCard1">
+            <property name="minimumSize">
+             <size>
+              <width>160</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>160</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::StyledPanel</enum>
+            </property>
+            <property name="frameShadow">
+             <enum>QFrame::Raised</enum>
+            </property>
+            <layout class="QHBoxLayout" name="horizontalLayout">
+             <item>
+              <widget class="QLabel" name="stat1ValueLabel">
+               <property name="font">
+                <font>
+                 <pointsize>24</pointsize>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                <string>0</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="stat1Label">
+               <property name="text">
+                <string>Всего продуктов</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QFrame" name="statCard3">
+            <property name="minimumSize">
+             <size>
+              <width>120</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>150</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::StyledPanel</enum>
+            </property>
+            <property name="frameShadow">
+             <enum>QFrame::Raised</enum>
+            </property>
+            <layout class="QHBoxLayout" name="horizontalLayout_2">
+             <item>
+              <widget class="QLabel" name="stat3ValueLabel">
+               <property name="font">
+                <font>
+                 <pointsize>24</pointsize>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                <string>0</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="stat3Label">
+               <property name="text">
+                <string>Банков</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QTableWidget" name="dataTableWidget">
+          <column>
+           <property name="text">
+            <string>Банк</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Продукт</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Ставка %</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Сумма</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Срок</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Валюта</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Confidence</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Дата сбора</string>
+           </property>
+          </column>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="chartsTab">
+       <attribute name="title">
+        <string>Графики Финам</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="chartsTabLayout"/>
+      </widget>
+      <widget class="QWidget" name="analysisTab">
+       <attribute name="title">
+        <string>Анализ</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="analysisTabLayout"/>
+      </widget>
+      <widget class="QWidget" name="settingsTab">
+       <attribute name="title">
+        <string>Настройки</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="settingsTabLayout">
+        <item>
+         <widget class="QScrollArea" name="settingsScrollArea">
+          <property name="widgetResizable">
+           <bool>true</bool>
+          </property>
+          <widget class="QWidget" name="settingsScrollAreaWidgetContents">
+           <property name="geometry">
+            <rect>
+             <x>0</x>
+             <y>-160</y>
+             <width>757</width>
+             <height>471</height>
+            </rect>
+           </property>
+           <layout class="QVBoxLayout" name="settingsContentLayout">
+            <item>
+             <widget class="QGroupBox" name="parsingGroupBox">
+              <property name="title">
+               <string>Настройки парсинга</string>
+              </property>
+              <layout class="QVBoxLayout" name="parsingLayout">
+               <item>
+                <layout class="QHBoxLayout" name="updateIntervalLayout">
+                 <item>
+                  <widget class="QLabel" name="updateIntervalLabel">
+                   <property name="text">
+                    <string>Интервал обновления (минуты):</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QSpinBox" name="updateIntervalSpinBox">
+                   <property name="minimum">
+                    <number>1</number>
+                   </property>
+                   <property name="maximum">
+                    <number>1440</number>
+                   </property>
+                   <property name="value">
+                    <number>60</number>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="timeoutLayout">
+                 <item>
+                  <widget class="QLabel" name="timeoutLabel">
+                   <property name="text">
+                    <string>Таймаут запроса (секунды):</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QSpinBox" name="timeoutSpinBox">
+                   <property name="minimum">
+                    <number>1</number>
+                   </property>
+                   <property name="maximum">
+                    <number>300</number>
+                   </property>
+                   <property name="value">
+                    <number>30</number>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="retriesLayout">
+                 <item>
+                  <widget class="QLabel" name="retriesLabel">
+                   <property name="text">
+                    <string>Количество повторов:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QSpinBox" name="retriesSpinBox">
+                   <property name="minimum">
+                    <number>1</number>
+                   </property>
+                   <property name="maximum">
+                    <number>10</number>
+                   </property>
+                   <property name="value">
+                    <number>3</number>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="notificationsGroupBox">
+              <property name="title">
+               <string>Уведомления</string>
+              </property>
+              <layout class="QVBoxLayout" name="notificationsLayout">
+               <item>
+                <widget class="QCheckBox" name="enableNotificationsCheckBox">
+                 <property name="text">
+                  <string>Включить уведомления</string>
+                 </property>
+                 <property name="checked">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QCheckBox" name="notifyOnNewDataCheckBox">
+                 <property name="text">
+                  <string>Уведомлять при обновлении данных</string>
+                 </property>
+                 <property name="checked">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QCheckBox" name="notifyOnErrorsCheckBox">
+                 <property name="text">
+                  <string>Уведомлять при ошибках парсинга</string>
+                 </property>
+                 <property name="checked">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="defaultFiltersGroupBox">
+              <property name="title">
+               <string>Фильтры по умолчанию</string>
+              </property>
+              <layout class="QVBoxLayout" name="defaultFiltersLayout">
+               <item>
+                <layout class="QHBoxLayout" name="defaultBankLayout">
+                 <item>
+                  <widget class="QLabel" name="defaultBankLabel">
+                   <property name="text">
+                    <string>Банк:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QComboBox" name="defaultBankComboBox">
+                   <item>
+                    <property name="text">
+                     <string>Все банки</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>Сбербанк</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>Альфа-Банк</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>ВТБ</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>ТБанк</string>
+                    </property>
+                   </item>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="defaultCategoryLayout">
+                 <item>
+                  <widget class="QLabel" name="defaultCategoryLabel">
+                   <property name="text">
+                    <string>Категория:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QComboBox" name="defaultCategoryComboBox">
+                   <item>
+                    <property name="text">
+                     <string>Все</string>
+                    </property>
+                   </item>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="defaultCurrencyLayout"/>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="displayGroupBox">
+              <property name="title">
+               <string>Отображение</string>
+              </property>
+              <layout class="QVBoxLayout" name="displayLayout">
+               <item>
+                <layout class="QHBoxLayout" name="pageSizeSettingsLayout">
+                 <item>
+                  <widget class="QLabel" name="pageSizeSettingsLabel">
+                   <property name="text">
+                    <string>Строк на странице:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QComboBox" name="pageSizeSettingsComboBox">
+                   <item>
+                    <property name="text">
+                     <string>10</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>50</string>
+                    </property>
+                   </item>
+                   <item>
+                    <property name="text">
+                     <string>100</string>
+                    </property>
+                   </item>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <widget class="QCheckBox" name="autoRefreshCheckBox">
+                 <property name="text">
+                  <string>Авто-обновление</string>
+                 </property>
+                 <property name="checked">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="autoRefreshIntervalLayout">
+                 <item>
+                  <widget class="QLabel" name="autoRefreshIntervalLabel">
+                   <property name="text">
+                    <string>Интервал обновления (секунды):</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QSpinBox" name="autoRefreshIntervalSpinBox">
+                   <property name="minimum">
+                    <number>10</number>
+                   </property>
+                   <property name="maximum">
+                    <number>3600</number>
+                   </property>
+                   <property name="value">
+                    <number>300</number>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="settingsButtonsLayout">
+              <item>
+               <widget class="QPushButton" name="saveSettingsButton">
+                <property name="text">
+                 <string>Сохранить настройки</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="resetSettingsButton">
+                <property name="text">
+                 <string>Сбросить</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+    <item>
+     <layout class="QVBoxLayout" name="logsLayout">
+      <item>
+       <widget class="QPushButton" name="logsToggleButton">
+        <property name="text">
+         <string>▼ Логи системы (0)</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QWidget" name="logWidget" native="true">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <layout class="QVBoxLayout" name="logsContentLayout">
+         <property name="spacing">
+          <number>3</number>
+         </property>
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <layout class="QHBoxLayout" name="logsFiltersLayout">
+           <item>
+            <widget class="QLineEdit" name="logsSearchLineEdit">
+             <property name="placeholderText">
+              <string>Поиск в логах...</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="logsAllButton">
+             <property name="text">
+              <string>ALL</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="logsInfoButton">
+             <property name="text">
+              <string>INFO</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="logsWarningButton">
+             <property name="text">
+              <string>WARNING</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="logsErrorButton">
+             <property name="text">
+              <string>ERROR</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QListWidget" name="logsListWidget"/>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QDockWidget" name="chatDockWidget">
+   <property name="features">
+    <set>QDockWidget::DockWidgetFloatable|QDockWidget::DockWidgetMovable</set>
+   </property>
+   <property name="allowedAreas">
+    <set>Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea</set>
+   </property>
+   <property name="windowTitle">
+    <string>AI Аналитик</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>1</number>
+   </attribute>
+   <widget class="QWidget" name="chatDockWidgetContents">
+    <layout class="QVBoxLayout" name="chatLayout">
+     <property name="spacing">
+      <number>0</number>
+     </property>
+     <property name="leftMargin">
+      <number>0</number>
+     </property>
+     <property name="topMargin">
+      <number>0</number>
+     </property>
+     <property name="rightMargin">
+      <number>0</number>
+     </property>
+     <property name="bottomMargin">
+      <number>0</number>
+     </property>
+     <item>
+      <widget class="QScrollArea" name="chatMessagesScrollArea">
+       <property name="verticalScrollBarPolicy">
+        <enum>Qt::ScrollBarAsNeeded</enum>
+       </property>
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="chatMessagesWidget">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>218</width>
+          <height>650</height>
+         </rect>
+        </property>
+        <layout class="QVBoxLayout" name="chatMessagesLayout">
+         <item>
+          <widget class="QLabel" name="chatWelcomeLabel">
+           <property name="text">
+            <string>Привет! Я AI-аналитик BankMonitor. Могу помочь с анализом банковских продуктов, трендов ставок и рекомендациями. Что вас интересует?</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="chatMessagesSpacer">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="chatInputLayout">
+       <property name="spacing">
+        <number>3</number>
+       </property>
+       <property name="leftMargin">
+        <number>2</number>
+       </property>
+       <property name="topMargin">
+        <number>2</number>
+       </property>
+       <property name="rightMargin">
+        <number>2</number>
+       </property>
+       <property name="bottomMargin">
+        <number>4</number>
+       </property>
+       <item>
+        <widget class="QLineEdit" name="chatInputLineEdit">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="placeholderText">
+          <string>Задайте вопрос...</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="chatSendButton">
+         <property name="minimumSize">
+          <size>
+           <width>80</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>80</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Отправить</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </widget>
+  </widget>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>logsToggleButton</sender>
+   <signal>clicked(bool)</signal>
+   <receiver>logWidget</receiver>
+   <slot>setVisible(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>575</x>
+     <y>586</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>517</x>
+     <y>606</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+</ui>
