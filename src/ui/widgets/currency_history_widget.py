@@ -7,6 +7,7 @@ import qasync
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
+import matplotlib.dates as mdates
 from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -31,6 +32,12 @@ class CurrencyHistoryWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("История валют")
+        self._theme_colors = {
+            "background": "#FFFFFF",
+            "text": "#000000",
+            "grid": "#E0E0E0",
+            "axes": "#000000",
+        }
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -63,14 +70,70 @@ class CurrencyHistoryWidget(QWidget):
         layout.addLayout(controls)
 
         # --- Charts ---
-        self.fig = Figure(figsize=(10, 5))
+        # Увеличиваем высоту фигуры, чтобы было больше места для графиков
+        self.fig = Figure(figsize=(10, 7))
         self.canvas = FigureCanvas(self.fig)
         layout.addWidget(self.canvas)
 
+        # Создаем subplot с увеличенными отступами между графиками
         self.ax_value = self.fig.add_subplot(211)
         self.ax_delta = self.fig.add_subplot(212)
 
+        # Увеличиваем отступы между графиками, чтобы даты влезли
+        # hspace=0.6 дает примерно 2 см дополнительного пространства между графиками
+        self.fig.subplots_adjust(hspace=0.6, bottom=0.15, top=0.95)
+
+        # Применяем начальные цвета темы
+        self._apply_theme_colors()
+
         asyncio.create_task(self._load_valutes())
+
+    def update_theme_colors(self, theme_colors: dict):
+        """
+        Обновляет цвета графиков в соответствии с темой.
+
+        Args:
+            theme_colors: Словарь с цветами темы (background, text, grid, axes)
+        """
+        self._theme_colors = theme_colors
+        self._apply_theme_colors()
+        # Обновляем графики, если они уже отображены
+        # Проверяем, есть ли данные на графиках
+        has_value_data = hasattr(self, 'ax_value') and len(self.ax_value.lines) > 0
+        has_delta_data = hasattr(self, 'ax_delta') and len(self.ax_delta.patches) > 0
+
+        if has_value_data or has_delta_data:
+            # Перерисовываем графики с новыми цветами
+            # Обновляем цвета сетки для обоих графиков
+            if has_value_data:
+                self.ax_value.grid(True, color=self._theme_colors["grid"], alpha=0.3)
+            if has_delta_data:
+                self.ax_delta.grid(True, color=self._theme_colors["grid"], alpha=0.3)
+            # Перерисовываем canvas
+            self.canvas.draw()
+
+    def _apply_theme_colors(self):
+        """Применяет цвета темы к графикам."""
+        self.fig.patch.set_facecolor(self._theme_colors["background"])
+        self.ax_value.set_facecolor(self._theme_colors["background"])
+        self.ax_delta.set_facecolor(self._theme_colors["background"])
+
+        # Цвета текста и осей
+        self.ax_value.tick_params(colors=self._theme_colors["text"])
+        self.ax_delta.tick_params(colors=self._theme_colors["text"])
+        self.ax_value.xaxis.label.set_color(self._theme_colors["text"])
+        self.ax_value.yaxis.label.set_color(self._theme_colors["text"])
+        self.ax_delta.xaxis.label.set_color(self._theme_colors["text"])
+        self.ax_delta.yaxis.label.set_color(self._theme_colors["text"])
+        self.ax_value.title.set_color(self._theme_colors["text"])
+        self.ax_delta.title.set_color(self._theme_colors["text"])
+
+        # Цвета осей
+        for ax in [self.ax_value, self.ax_delta]:
+            ax.spines['bottom'].set_color(self._theme_colors["axes"])
+            ax.spines['top'].set_color(self._theme_colors["axes"])
+            ax.spines['right'].set_color(self._theme_colors["axes"])
+            ax.spines['left'].set_color(self._theme_colors["axes"])
 
     async def _fetch_json(self, session: httpx.AsyncClient, date: datetime) -> dict | None:
         """Загружаем JSON ЦБ на указанную дату (если нет, идём назад)."""
@@ -159,7 +222,9 @@ class CurrencyHistoryWidget(QWidget):
 
         rates = await self._fetch_rates(code, start, end)
         if not rates:
-            self.ax_value.text(0.5, 0.5, "Нет данных", ha="center")
+            # Применяем цвета темы даже когда нет данных
+            self._apply_theme_colors()
+            self.ax_value.text(0.5, 0.5, "Нет данных", ha="center", color=self._theme_colors["text"])
             self.canvas.draw()
             self.update_btn.setEnabled(True)
             return
@@ -171,24 +236,146 @@ class CurrencyHistoryWidget(QWidget):
         self._plot_value_chart(code, dates, values)
         self._plot_delta_chart(code, dates, deltas)
 
+        # Автоматическое форматирование дат на обеих осях X
+        # Убеждаемся, что форматирование дат применено к обеим осям
+        if dates and len(dates) > 0:
+            for ax in [self.ax_value, self.ax_delta]:
+                try:
+                    # Проверяем, что форматирование дат действительно применено
+                    formatter = ax.xaxis.get_major_formatter()
+                    if not isinstance(formatter, mdates.DateFormatter):
+                        date_format = mdates.DateFormatter("%d.%m.%Y")
+                        ax.xaxis.set_major_formatter(date_format)
+                    # Явно включаем отображение меток
+                    ax.tick_params(axis='x', labelbottom=True)
+                    # Убеждаемся, что все метки видны
+                    for label in ax.get_xticklabels():
+                        label.set_visible(True)
+                except Exception as e:
+                    print(f"Ошибка при применении форматирования дат: {e}")
+        # Автоматическое форматирование дат (применяется к обеим осям)
         self.fig.autofmt_xdate()
+        # Явно включаем метки на обеих осях после autofmt_xdate
+        # (autofmt_xdate может скрыть метки на верхнем графике)
+        self.ax_value.tick_params(axis='x', labelbottom=True)
+        self.ax_delta.tick_params(axis='x', labelbottom=True)
+        # Убеждаемся, что все метки видны и повернуты
+        for label in self.ax_value.get_xticklabels():
+            label.set_visible(True)
+            label.set_rotation(45)
+        for label in self.ax_delta.get_xticklabels():
+            label.set_visible(True)
+            label.set_rotation(45)
+        # Обновляем отступы после форматирования
+        # hspace=0.6 дает примерно 2 см дополнительного пространства между графиками
+        self.fig.subplots_adjust(hspace=0.6, bottom=0.15, top=0.95)
         self.canvas.draw()
         self.update_btn.setEnabled(True)
 
     def _plot_value_chart(self, code: str, dates, values):
         """Строит график значений."""
+        # Применяем цвета темы перед построением
+        self._apply_theme_colors()
         self.ax_value.plot(dates, values, marker="o", linestyle="-")
         self.ax_value.set_title(f"{code} - курс")
-        self.ax_value.grid(True)
-        self.ax_value.xaxis.set_major_locator(MaxNLocator(nbins=10, prune="both"))
+        self.ax_value.grid(True, color=self._theme_colors["grid"], alpha=0.3)
+
+        # Форматирование дат на оси X
+        if dates and len(dates) > 0:
+            try:
+                days_span = (max(dates) - min(dates)).days
+                num_points = len(dates)
+                # Единый формат дат: день.месяц.год
+                date_format = mdates.DateFormatter("%d.%m.%Y")
+                # Адаптивный интервал в зависимости от периода (более частые даты)
+                # Цель: показать примерно 8-12 дат на графике
+                if days_span <= 7:
+                    # Для недели - каждый день
+                    locator = mdates.DayLocator(interval=1)
+                elif days_span <= 31:
+                    # Для месяца - каждые 2-3 дня
+                    interval = max(1, days_span // 12)
+                    locator = mdates.DayLocator(interval=interval)
+                elif days_span <= 90:
+                    # Для квартала - каждые 5-7 дней
+                    interval = max(1, days_span // 12)
+                    locator = mdates.DayLocator(interval=interval)
+                elif days_span <= 365:
+                    # Для года - каждые 2-3 недели
+                    interval = max(1, days_span // 15)
+                    locator = mdates.DayLocator(interval=interval)
+                else:
+                    # Для больше года - каждый месяц
+                    locator = mdates.MonthLocator(interval=1)
+
+                self.ax_value.xaxis.set_major_formatter(date_format)
+                self.ax_value.xaxis.set_major_locator(locator)
+            except Exception as e:
+                # Если ошибка форматирования, используем стандартный формат с большим количеством бинов
+                print(f"Ошибка форматирования дат на графике курса: {e}")
+                try:
+                    # Пробуем применить хотя бы базовое форматирование дат
+                    date_format = mdates.DateFormatter("%d.%m.%Y")
+                    self.ax_value.xaxis.set_major_formatter(date_format)
+                    self.ax_value.xaxis.set_major_locator(MaxNLocator(nbins=15, prune="both"))
+                except:
+                    self.ax_value.xaxis.set_major_locator(MaxNLocator(nbins=15, prune="both"))
+        else:
+            # Если нет дат, используем стандартный формат
+            self.ax_value.xaxis.set_major_locator(MaxNLocator(nbins=15, prune="both"))
+
         self.ax_value.yaxis.set_major_locator(MaxNLocator(nbins=10))
-        self.ax_value.margins(x=0.1, y=0.1)
+        self.ax_value.margins(x=0.05, y=0.1)
+        # Явно включаем отображение дат на верхнем графике
+        self.ax_value.tick_params(axis='x', labelbottom=True, labelsize=8)
+        # Убеждаемся, что метки видны
+        for label in self.ax_value.get_xticklabels():
+            label.set_visible(True)
+            label.set_rotation(45)
 
     def _plot_delta_chart(self, code: str, dates, deltas):
         """Строит график изменений."""
+        # Применяем цвета темы перед построением
+        self._apply_theme_colors()
         colors = ["#008000" if d > 0 else "#8B0000" if d < 0 else "#696969" for d in deltas]
         self.ax_delta.bar(dates, deltas, color=colors)
         self.ax_delta.set_title(f"{code} - изменение курса")
-        self.ax_delta.grid(True)
-        self.ax_delta.xaxis.set_major_locator(MaxNLocator(nbins=10, prune="both"))
-        self.ax_delta.margins(x=0.1, y=0.1)
+        self.ax_delta.grid(True, color=self._theme_colors["grid"], alpha=0.3)
+
+        # Форматирование дат на оси X
+        if dates:
+            try:
+                days_span = (max(dates) - min(dates)).days
+                num_points = len(dates)
+                # Единый формат дат: день.месяц.год
+                date_format = mdates.DateFormatter("%d.%m.%Y")
+                # Адаптивный интервал в зависимости от периода (более частые даты)
+                # Цель: показать примерно 8-12 дат на графике
+                if days_span <= 7:
+                    # Для недели - каждый день
+                    locator = mdates.DayLocator(interval=1)
+                elif days_span <= 31:
+                    # Для месяца - каждые 2-3 дня
+                    interval = max(1, days_span // 12)
+                    locator = mdates.DayLocator(interval=interval)
+                elif days_span <= 90:
+                    # Для квартала - каждые 5-7 дней
+                    interval = max(1, days_span // 12)
+                    locator = mdates.DayLocator(interval=interval)
+                elif days_span <= 365:
+                    # Для года - каждые 2-3 недели
+                    interval = max(1, days_span // 15)
+                    locator = mdates.DayLocator(interval=interval)
+                else:
+                    # Для больше года - каждый месяц
+                    locator = mdates.MonthLocator(interval=1)
+
+                self.ax_delta.xaxis.set_major_formatter(date_format)
+                self.ax_delta.xaxis.set_major_locator(locator)
+            except Exception:
+                # Если ошибка форматирования, используем стандартный формат с большим количеством бинов
+                self.ax_delta.xaxis.set_major_locator(MaxNLocator(nbins=15, prune="both"))
+
+        self.ax_delta.margins(x=0.05, y=0.1)
+        # У нижнего графика показываем даты на оси X
+        self.ax_delta.tick_params(axis='x', labelbottom=True, rotation=45)

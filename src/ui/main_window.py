@@ -15,7 +15,10 @@ from core.services.data_service import DataService
 from core.services.database_service import DatabaseService
 from core.services.export_service import ExportService
 from core.services.logger_service import LoggerService
+from core.services.notification_service import NotificationService
 from core.services.parsing_service import ParsingService
+from core.theme import apply_theme, get_theme_colors
+from PyQt6.QtWidgets import QApplication
 from ui.ui_main_window import Ui_MainWindow
 from ui.widgets.charts_widget import ChartsWidget
 from ui.widgets.currency_tab_widget import CurrencyTabWidget
@@ -38,6 +41,9 @@ class MainWindow(QMainWindow):
         # Сервисы
         # Инициализируем LoggerService сначала
         self.logger_service = LoggerService()
+        
+        # Инициализируем NotificationService
+        self.notification_service = NotificationService(self)
 
         # Инициализируем DatabaseManager и DatabaseService
         try:
@@ -90,6 +96,7 @@ class MainWindow(QMainWindow):
         self.charts_widget: Optional[ChartsWidget] = None
         self.settings_widget: Optional[SettingsWidget] = None
         self.logs_widget: Optional[LogsWidget] = None
+        self.currency_tab_widget: Optional[CurrencyTabWidget] = None
 
         # Таймеры
         self._auto_refresh_timer: Optional[QTimer] = None
@@ -289,10 +296,10 @@ class MainWindow(QMainWindow):
         self.ui.logsToggleButton.clicked.connect(on_logs_toggle)
 
         # Добавляем вкладку с валютами после "Таблица"
-        currency_tab = CurrencyTabWidget(currency_rates_service=self.currency_rates_service)
+        self.currency_tab_widget = CurrencyTabWidget(currency_rates_service=self.currency_rates_service)
         # Находим индекс вкладки "Таблица" и добавляем после неё
         table_tab_index = self.ui.mainTabWidget.indexOf(self.ui.tableTab)
-        self.ui.mainTabWidget.insertTab(table_tab_index + 1, currency_tab, "Валюты")
+        self.ui.mainTabWidget.insertTab(table_tab_index + 1, self.currency_tab_widget, "Валюты")
 
         # Настраиваем фильтры (они находятся в tableTab, а не в header)
         self._setup_filters()
@@ -391,6 +398,36 @@ class MainWindow(QMainWindow):
             self.settings_widget.settings_saved.connect(self._on_settings_saved)
             self.settings_widget.settings_reset.connect(self._on_settings_reset)
 
+        # Подключаем сигналы уведомлений от виджетов
+        if hasattr(self, 'banki_ratings_widget') and self.banki_ratings_widget:
+            self.banki_ratings_widget.parse_error.connect(
+                lambda error: self.notification_service.notify_error(
+                    "Ошибка парсинга рейтингов банков",
+                    error
+                )
+            )
+            self.banki_ratings_widget.parse_finished.connect(
+                lambda data: self.notification_service.notify_new_data(
+                    "Рейтинги банков загружены",
+                    f"Загружено {data.get('total_banks', 0)} банков"
+                )
+            )
+        
+        # Подключаем сигналы уведомлений от MOEX виджета
+        if hasattr(self, 'moex_charts_widget') and self.moex_charts_widget:
+            self.moex_charts_widget.parse_error.connect(
+                lambda error: self.notification_service.notify_error(
+                    "Ошибка парсинга данных MOEX",
+                    error
+                )
+            )
+            self.moex_charts_widget.parse_finished.connect(
+                lambda data: self.notification_service.notify_new_data(
+                    "Данные MOEX загружены",
+                    f"Загружено {data.get('records', 0)} записей по {data.get('securities', 0)} ценным бумагам"
+                )
+            )
+
     def _load_initial_data(self):
         """Загружает начальные данные из БД при старте приложения."""
         self.logger_service.add_log("INFO", "Приложение запущено")
@@ -439,6 +476,7 @@ class MainWindow(QMainWindow):
 
         self.logger_service.add_log("INFO", f"Спарсено {len(products)} продуктов")
         self._update_logs()
+        # Уведомление показывается только после завершения всего парсинга в _refresh_data
 
     async def _refresh_data(self):
         """
@@ -460,6 +498,12 @@ class MainWindow(QMainWindow):
             self.logger_service.add_log(
                 "INFO", f"Парсинг завершен. Всего продуктов в БД: {len(products)}"
             )
+            
+            # Уведомление об успешном обновлении данных
+            self.notification_service.notify_new_data(
+                "Парсинг завершен успешно",
+                f"Всего продуктов в базе данных: {len(products)}"
+            )
 
             # Удаляем старые неактуальные записи (старше 7 дней)
             if self.database_service:
@@ -477,8 +521,15 @@ class MainWindow(QMainWindow):
 
             self._update_logs()
         except Exception as e:
-            self.logger_service.add_log("ERROR", f"Ошибка парсинга данных: {str(e)}")
+            error_msg = f"Ошибка парсинга данных: {str(e)}"
+            self.logger_service.add_log("ERROR", error_msg)
             self._update_logs()
+            
+            # Уведомление об ошибке парсинга
+            self.notification_service.notify_error(
+                "Ошибка при парсинге данных",
+                error_msg
+            )
 
             # В случае ошибки, пытаемся загрузить данные из БД
             try:
@@ -679,6 +730,26 @@ class MainWindow(QMainWindow):
         # TODO: Сохранить настройки в файл/БД
         self.logger_service.add_log("INFO", "Настройки сохранены")
         self._update_logs()
+
+        # Применяем тему
+        theme = settings.get("theme", "Светлая")
+        app = QApplication.instance()
+        if app:
+            apply_theme(app, theme)
+            # Принудительно обновляем главное окно и все его виджеты
+            self.update()
+            self.repaint()
+            # Обновляем графики с новыми цветами
+            theme_colors = get_theme_colors(theme)
+            if self.moex_charts_widget:
+                self.moex_charts_widget.update_theme_colors(theme_colors)
+            if self.charts_widget and hasattr(self.charts_widget, 'update_theme_colors'):
+                self.charts_widget.update_theme_colors(theme_colors)
+            if self.currency_tab_widget:
+                self.currency_tab_widget.update_theme_colors(theme_colors)
+
+        # Обновляем настройки уведомлений
+        self.notification_service.set_settings(settings)
 
         # Обновляем настройки парсинга
         timeout = settings.get("timeout", 30)

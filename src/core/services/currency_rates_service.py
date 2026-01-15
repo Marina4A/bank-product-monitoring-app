@@ -1,6 +1,7 @@
 """Сервис для работы с курсами валют в базе данных."""
 
 import asyncio
+import re
 from datetime import date, datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
@@ -23,6 +24,65 @@ class CurrencyRatesService:
         self.db_manager = db_manager
         # Создаем таблицы при инициализации
         self.db_manager.create_tables()
+
+    def _normalize_string(self, value: str | None) -> str | None:
+        """
+        Нормализует строку для безопасной записи в БД.
+        Удаляет недопустимые последовательности байт и приводит к UTF-8.
+        
+        Args:
+            value: Строка для нормализации
+            
+        Returns:
+            Нормализованная строка или None
+        """
+        if value is None:
+            return None
+        
+        if not isinstance(value, str):
+            try:
+                value = str(value)
+            except Exception:
+                return None
+        
+        try:
+            # Если это bytes, пробуем декодировать
+            if isinstance(value, bytes):
+                # Сначала пробуем UTF-8
+                try:
+                    value = value.decode('utf-8', errors='strict')
+                except UnicodeDecodeError:
+                    # Если не получается, пробуем Windows-1251 (частая проблема)
+                    try:
+                        value = value.decode('windows-1251', errors='replace')
+                    except Exception:
+                        # В крайнем случае используем replace для замены проблемных символов
+                        value = value.decode('utf-8', errors='replace')
+            
+            # Удаляем проблемные последовательности байт
+            # 0xc2 0xc0 - это часто встречающаяся проблема при конвертации из Windows-1251
+            # Удаляем их как строку и как байты
+            value = value.replace('\xc2\xc0', '')
+            value = value.replace('\x00', '')  # Нулевые байты
+            value = value.replace('\ufffd', '')  # Символ замены Unicode
+            
+            # Пробуем перекодировать для очистки проблемных последовательностей
+            try:
+                # Кодируем в UTF-8 и декодируем обратно для проверки
+                value_bytes = value.encode('utf-8', errors='replace')
+                value = value_bytes.decode('utf-8', errors='replace')
+            except Exception:
+                pass
+            
+            # Удаляем все непечатаемые символы кроме пробелов и переносов строк
+            # Оставляем только печатаемые символы, пробелы, переносы строк и табуляции
+            value = re.sub(r'[^\x20-\x7E\n\r\t\u00A0-\uFFFF]', '', value)
+            
+            return value.strip() if value else None
+        except Exception as e:
+            # В случае ошибки возвращаем None
+            print(f"Ошибка нормализации строки: {e}, значение: {repr(value[:50])}")
+            return None
 
     async def save_rates(self, rates_data: List[Dict], rate_date: datetime) -> int:
         """
@@ -65,8 +125,8 @@ class CurrencyRatesService:
                 for rate in rates_data:
                     db_rate = CurrencyRateDB(
                         id=str(uuid4()),
-                        code=rate.get("code", ""),
-                        name=rate.get("name", ""),
+                        code=self._normalize_string(rate.get("code", "")) or "",
+                        name=self._normalize_string(rate.get("name", "")) or "",
                         nominal=rate.get("nominal", 1.0),
                         value=rate.get("value", 0.0),
                         previous=rate.get("previous", 0.0),
@@ -77,8 +137,17 @@ class CurrencyRatesService:
 
                 session.commit()
                 return saved_count
+            except UnicodeEncodeError as e:
+                session.rollback()
+                print(f"Ошибка кодировки при сохранении курсов валют: {e}")
+                raise ValueError(f"Ошибка кодировки данных: {e}. Проверьте исходные данные.")
             except Exception as e:
                 session.rollback()
+                # Проверяем, не связана ли ошибка с кодировкой
+                error_msg = str(e).lower()
+                if 'encoding' in error_msg or 'utf8' in error_msg or 'utf-8' in error_msg:
+                    print(f"Ошибка кодировки при сохранении: {e}")
+                    raise ValueError(f"Ошибка кодировки данных: {e}. Убедитесь, что все строки в UTF-8.")
                 raise e
             finally:
                 session.close()

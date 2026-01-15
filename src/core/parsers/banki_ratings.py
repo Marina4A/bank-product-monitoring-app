@@ -11,6 +11,7 @@ from urllib.parse import urlencode, urlparse, parse_qs, urlunparse
 from typing import Any
 import traceback
 from playwright.async_api import Page
+from bs4 import BeautifulSoup
 
 from .base import BaseParser
 
@@ -73,14 +74,32 @@ class BankiRatingsParser(BaseParser):
         # Добавляем обязательные параметры, если их нет
         if 'sort_param' not in query_params:
             query_params['sort_param'] = ['bankname']
-        if 'date1' not in query_params:
-            query_params['date1'] = ['2025-12-01']
-        if 'date2' not in query_params:
-            query_params['date2'] = ['2025-11-01']
+        # date1 и date2 будут извлечены со страницы после загрузки
 
         # Формируем URL первой страницы (без PAGEN_1)
         query_string = urlencode(query_params, doseq=True)
         first_page_url = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, parsed_url.params, query_string, parsed_url.fragment))
+
+        # Проверяем, что даты не в будущем (если они были переданы в URL)
+        from datetime import datetime
+        today = datetime.now()
+        if 'date1' in query_params:
+            try:
+                date1_str = query_params['date1'][0]
+                date1_obj = datetime.strptime(date1_str, '%Y-%m-%d')
+                # Если дата в будущем (больше чем сегодня), не парсим
+                if date1_obj > today:
+                    print(f"Дата {date1_str} в будущем, парсинг не выполняется")
+                    return {
+                        "url": first_page_url,
+                        "title": await page.title(),
+                        "total_pages": 0,
+                        "total_banks": 0,
+                        "metadata": {},
+                        "ratings": [],
+                    }
+            except Exception:
+                pass
 
         # Переход на первую страницу
         await page.goto(first_page_url, wait_until="domcontentloaded")
@@ -88,6 +107,56 @@ class BankiRatingsParser(BaseParser):
         await page.wait_for_load_state("networkidle")
 
         await self.random_delay(1.0, 2.0)
+
+        # Извлекаем даты из select элементов на странице (если они не были переданы в URL)
+        # Если даты уже есть в URL, используем их, но проверяем, что они соответствуют выбранным на странице
+        try:
+            # Ждем появления селектов
+            date1_select = page.locator('select[name="date1"]').first
+            date2_select = page.locator('select[name="date2"]').first
+
+            # Ждем, пока селекты появятся
+            await page.wait_for_selector('select[name="date1"]', timeout=self._timeout_to_ms(5.0))
+            await page.wait_for_selector('select[name="date2"]', timeout=self._timeout_to_ms(5.0))
+
+            if await date1_select.count() > 0:
+                date1_value = await date1_select.input_value()
+                if date1_value:
+                    # Если дата в URL отличается от выбранной на странице, обновляем URL
+                    if 'date1' not in query_params or query_params['date1'][0] != date1_value:
+                        query_params['date1'] = [date1_value]
+                        # Обновляем URL с правильной датой
+                        query_string = urlencode(query_params, doseq=True)
+                        first_page_url = urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, parsed_url.params, query_string, parsed_url.fragment))
+                        # Перезагружаем страницу с правильной датой
+                        await page.goto(first_page_url, wait_until="domcontentloaded")
+                        await page.wait_for_load_state("networkidle")
+                        await self.random_delay(0.5, 1.0)
+
+            if await date2_select.count() > 0:
+                date2_value = await date2_select.input_value()
+                if date2_value:
+                    # Если дата в URL отличается от выбранной на странице, обновляем URL
+                    if 'date2' not in query_params or query_params['date2'][0] != date2_value:
+                        query_params['date2'] = [date2_value]
+        except Exception as e:
+            print(f"Ошибка при извлечении дат из селектов: {e}")
+            # Если даты не были переданы в URL и не удалось извлечь, используем значения по умолчанию
+            if 'date1' not in query_params:
+                # Первое число текущего месяца
+                from datetime import datetime
+                today = datetime.now()
+                default_date1 = f"{today.year}-{today.month:02d}-01"
+                query_params['date1'] = [default_date1]
+            if 'date2' not in query_params:
+                # Первое число предыдущего месяца
+                from datetime import datetime
+                today = datetime.now()
+                if today.month == 1:
+                    default_date2 = f"{today.year - 1}-12-01"
+                else:
+                    default_date2 = f"{today.year}-{today.month - 1:02d}-01"
+                query_params['date2'] = [default_date2]
 
         # Ожидание появления таблицы
         try:
@@ -359,7 +428,7 @@ class BankiRatingsParser(BaseParser):
         for page_num in pages_to_parse:
             pages_parsed_count += 1
             print(f"\n{'─'*60}")
-            print(f"ПАРСИНГ СТРАНИЦЫ {page_num} из {total_pages} (страница {pages_parsed_count}/{remaining_pages} из оставшихся)...")
+            print(f"ПАРСИНГ СТРАНИЦЫ {page_num} из {total_pages}...")
             print(f"{'─'*60}")
 
             # Формируем URL для конкретной страницы
@@ -420,11 +489,50 @@ class BankiRatingsParser(BaseParser):
 
         metadata = await self._extract_metadata(page)
 
+        # Дедупликация: убираем дубликаты по комбинации места и названия банка
+        # Используем словарь для отслеживания уникальных записей
+        # Ключ: (место, банк) - если место одинаковое, но банк разный, это разные записи
+        # Если место и банк одинаковые - это дубликат
+        seen = {}
+        unique_ratings = []
+        skipped_empty = 0
+        for rating in all_ratings:
+            place = rating.get('place')
+            bank_name = rating.get('bank_name', '').strip()
+
+            # Пропускаем записи без места или без названия банка
+            if place is None or not bank_name:
+                skipped_empty += 1
+                continue
+
+            # Создаем ключ из места и названия банка (нормализованного)
+            key = (int(place), bank_name.lower().strip())
+
+            # Если такой комбинации еще не было, добавляем
+            if key not in seen:
+                seen[key] = True
+                unique_ratings.append(rating)
+            else:
+                # Если дубликат найден, логируем для отладки
+                print(f"  Обнаружен дубликат: место={place}, банк={bank_name}")
+
+        if skipped_empty > 0:
+            print(f"\nПропущено пустых записей: {skipped_empty}")
+        print(f"Дедупликация: было {len(all_ratings)} записей, стало {len(unique_ratings)} уникальных")
+
         # Сортируем данные по месту в рейтинге от меньшего к большему
-        all_ratings_sorted = sorted(all_ratings, key=lambda x: (x.get('place', 999999) or 999999))
+        all_ratings_sorted = sorted(unique_ratings, key=lambda x: (x.get('place', 999999) or 999999))
 
         print(f"\nПарсинг завершен: всего извлечено банков: {len(all_ratings_sorted)} из {total_pages} страниц")
-        print(f"  Диапазон мест в рейтинге: {min(r.get('place', 0) or 0 for r in all_ratings_sorted)} - {max(r.get('place', 0) or 0 for r in all_ratings_sorted)}")
+        if all_ratings_sorted:
+            places = [r.get('place', 0) or 0 for r in all_ratings_sorted]
+            print(f"  Диапазон мест в рейтинге: {min(places)} - {max(places)}")
+            # Проверяем на дубликаты мест
+            from collections import Counter
+            place_counts = Counter(places)
+            duplicates = {place: count for place, count in place_counts.items() if count > 1}
+            if duplicates:
+                print(f"  ВНИМАНИЕ: Найдены дубликаты мест в рейтинге: {duplicates}")
 
         return {
             "url": first_page_url,
@@ -779,13 +887,16 @@ class BankiRatingsParser(BaseParser):
                 try:
                     row = rows.nth(i)
 
-                    # Проверяем, что строка видима
-                    if not await row.is_visible():
-                        print(f"  Пропущена невидимая строка {i + 1}")
-                        continue
+                    # Убираем проверку видимости - она может пропускать валидные строки
+                    # Вместо этого проверяем наличие данных после извлечения
 
                     # Извлекаем место в рейтинге
                     place_cell = row.locator('td').first
+
+                    # Проверяем, что ячейка существует
+                    if await place_cell.count() == 0:
+                        print(f"  Строка {i + 1}: первая ячейка не найдена, пропускаем")
+                        continue
                     place = None
                     place_change = None
                     place_change_type = None
@@ -800,9 +911,23 @@ class BankiRatingsParser(BaseParser):
                         if place_text:
                             place_text = place_text.strip()
                             # Парсим место (например, "223" или "85")
-                            place_match = re.match(r'(\d+)', place_text)
+                            # Используем более строгий паттерн - только число в начале строки
+                            # Игнорируем пробелы и другие символы перед числом
+                            place_match = re.match(r'^\s*(\d+)', place_text)
                             if place_match:
                                 place = int(place_match.group(1))
+                            else:
+                                # Если не нашли число в начале, пробуем найти первое число в тексте
+                                # но только если текст короткий (чтобы не захватить случайные числа)
+                                if len(place_text) < 20:
+                                    all_numbers = re.findall(r'\d+', place_text)
+                                    if all_numbers:
+                                        # Берем первое число, которое выглядит как место (1-1000)
+                                        for num_str in all_numbers:
+                                            num = int(num_str)
+                                            if 1 <= num <= 1000:
+                                                place = num
+                                                break
 
                         # Получаем HTML для извлечения изменения из <sup>
                         place_html = await place_cell.inner_html()
@@ -1039,11 +1164,23 @@ class BankiRatingsParser(BaseParser):
                                 for cell_idx in range(2, cells_count):
                                     try:
                                         cell = all_cells.nth(cell_idx)
+
+                                        # Пробуем сначала text_content
                                         cell_text = await cell.text_content()
                                         if not cell_text:
-                                            continue
+                                            # Если text_content пустой, пробуем innerHTML
+                                            cell_html = await cell.inner_html()
+                                            if cell_html:
+                                                # Извлекаем текст из HTML, убирая теги
+                                                soup = BeautifulSoup(cell_html, 'html.parser')
+                                                cell_text = soup.get_text(strip=True)
+                                            else:
+                                                continue
 
                                         cell_text = cell_text.strip()
+
+                                        if not cell_text:
+                                            continue
 
                                         # Пробуем найти формат "+1,250,801 (+0.37%)" или "+1 250 801 (+0.37%)"
                                         # Ищем паттерн: число (с разделителями) и в скобках процент
@@ -1106,6 +1243,38 @@ class BankiRatingsParser(BaseParser):
                                                     if i < 3:
                                                         print(f"  Строка {i + 1}: найдены изменения в ячейке {cell_idx} в формате двух чисел: '{cell_text}'")
                                                     break
+
+                                        # Дополнительная попытка: проверяем HTML содержимое ячейки
+                                        if change_absolute is None or change_percent is None:
+                                            try:
+                                                cell_html = await cell.inner_html()
+                                                if cell_html:
+                                                    # Ищем в HTML формате "+1,250,801 (+0.37%)"
+                                                    html_match = re.search(
+                                                        r'([+-]?[\d\s,]+)\s*\(([+-]?[\d.,]+)%\)',
+                                                        cell_html
+                                                    )
+                                                    if html_match:
+                                                        abs_str = html_match.group(1).strip()
+                                                        percent_str = html_match.group(2).strip()
+
+                                                        if change_absolute is None:
+                                                            change_absolute = self._parse_number(abs_str)
+                                                        if change_percent is None:
+                                                            change_percent = self._parse_percent(percent_str)
+
+                                                        if not change_type:
+                                                            if abs_str.startswith('+') or (change_absolute and change_absolute > 0):
+                                                                change_type = 'increase'
+                                                            elif abs_str.startswith('-') or (change_absolute and change_absolute < 0):
+                                                                change_type = 'decrease'
+
+                                                        if change_absolute is not None or change_percent is not None:
+                                                            if i < 3:
+                                                                print(f"  Строка {i + 1}: найдены изменения в ячейке {cell_idx} из HTML: '{cell_html[:100]}'")
+                                                            break
+                                            except Exception:
+                                                pass
                                     except Exception as e:
                                         if i < 3:
                                             print(f"  Строка {i + 1}: ошибка при проверке ячейки {cell_idx}: {e}")
@@ -1127,7 +1296,8 @@ class BankiRatingsParser(BaseParser):
                             print(f"Ошибка при извлечении показателей для строки {i + 1}: {e}")
 
                     # Создаем запись о рейтинге только если есть название банка и место в рейтинге
-                    if bank_name and place is not None:
+                    # Проверяем, что место валидное (от 1 до 1000) и название банка не пустое
+                    if bank_name and bank_name.strip() and place is not None and 1 <= place <= 1000:
                         rating_data = {
                             "place": place,
                             "place_change": place_change,
@@ -1143,6 +1313,9 @@ class BankiRatingsParser(BaseParser):
                             "change_type": change_type,
                         }
                         ratings.append(rating_data)
+                    elif place is not None and (place < 1 or place > 1000):
+                        # Логируем невалидное место для отладки
+                        print(f"  Строка {i + 1}: пропущено невалидное место в рейтинге: {place} (банк: {bank_name})")
                     else:
                         # Детальная диагностика пропущенной строки
                         if not bank_name:
@@ -1165,6 +1338,16 @@ class BankiRatingsParser(BaseParser):
             traceback.print_exc()
 
         print(f"  Итого извлечено рейтингов со страницы: {len(ratings)} из {rows_count} строк")
+
+        # Диагностика: проверяем на дубликаты мест на текущей странице
+        places_on_page = [r.get('place') for r in ratings if r.get('place') is not None]
+        if places_on_page:
+            from collections import Counter
+            place_counts = Counter(places_on_page)
+            duplicates = {place: count for place, count in place_counts.items() if count > 1}
+            if duplicates:
+                print(f"  ВНИМАНИЕ: На текущей странице найдены дубликаты мест: {duplicates}")
+
         return ratings
 
     def _parse_number(self, text: str) -> float | None:

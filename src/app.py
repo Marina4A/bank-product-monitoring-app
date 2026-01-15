@@ -2,10 +2,10 @@ import asyncio
 import sys
 
 from PyQt6.QtCore import QEvent, QObject
-from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QApplication, QStyleFactory
+from PyQt6.QtWidgets import QApplication
 from qasync import QEventLoop
 
+from core.theme import apply_theme
 from ui.main_window import MainWindow
 
 
@@ -53,41 +53,11 @@ async def main_async(app: QApplication) -> int:
     app.setOrganizationName("BankMonitor")
     app.setQuitOnLastWindowClosed(True)
 
-    # Принудительно устанавливаем светлую тему
-    # Устанавливаем стиль Fusion (кросс-платформенный, поддерживает светлую тему)
-    available_styles = QStyleFactory.keys()
-    if "Fusion" in available_styles:
-        app.setStyle("Fusion")
-    elif available_styles:
-        app.setStyle(available_styles[0])
+    # Применяем светлую тему по умолчанию
+    apply_theme(app, "Светлая")
 
-    # Устанавливаем светлую палитру принудительно
-    palette = QPalette()
-    # Фон
-    palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
-    palette.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
-    # Кнопки
-    palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
-    palette.setColor(QPalette.ColorRole.ButtonText, QColor(0, 0, 0))
-    # Базовые цвета
-    palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
-    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(245, 245, 245))
-    palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-    # Акцентные цвета
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(0, 120, 215))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    # Отключенные элементы (используем правильный синтаксис PyQt6)
-    # В PyQt6 ColorGroup - это вложенный enum в QPalette
-    disabled_group = QPalette.ColorGroup.Disabled
-    palette.setColor(
-        disabled_group, QPalette.ColorRole.WindowText, QColor(127, 127, 127)
-    )
-    palette.setColor(disabled_group, QPalette.ColorRole.Text, QColor(127, 127, 127))
-    palette.setColor(
-        disabled_group, QPalette.ColorRole.ButtonText, QColor(127, 127, 127)
-    )
-
-    app.setPalette(palette)
+    # Сохраняем ссылку на app для применения темы
+    sys.modules['app_instance'] = app
 
     # click_logger = WidgetClickLogger()
     # app.installEventFilter(click_logger)

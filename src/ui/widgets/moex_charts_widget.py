@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import pandas as pd
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -277,10 +277,20 @@ async def _parse_moex_data(parser_params: dict[str, Any]) -> dict[str, Any]:
 class MoexChartsWidget(QWidget):
     """Виджет для отображения графиков ценных бумаг MOEX."""
 
+    # Сигналы для уведомлений
+    parse_finished = pyqtSignal(dict)  # data dict
+    parse_error = pyqtSignal(str)  # error message
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._data: Optional[pd.DataFrame] = None
         self._parse_result: Optional[dict[str, Any]] = None
+        self._theme_colors = {
+            "background": "#FFFFFF",
+            "text": "#000000",
+            "grid": "#E0E0E0",
+            "axes": "#000000",
+        }
         self._setup_ui()
 
     def _setup_ui(self):
@@ -375,13 +385,18 @@ class MoexChartsWidget(QWidget):
     def _show_placeholder(self):
         """Скрывает графики и таблицу при отсутствии данных."""
         # Очищаем фигуры без текста - просто пустые графики
+        # Применяем цвет фона из темы
         self.price_figure.clear()
+        self.price_figure.patch.set_facecolor(self._theme_colors["background"])
         ax = self.price_figure.add_subplot(111)
+        ax.set_facecolor(self._theme_colors["background"])
         ax.axis("off")
         self.price_canvas.draw()
 
         self.returns_figure.clear()
+        self.returns_figure.patch.set_facecolor(self._theme_colors["background"])
         ax2 = self.returns_figure.add_subplot(111)
+        ax2.set_facecolor(self._theme_colors["background"])
         ax2.axis("off")
         self.returns_canvas.draw()
 
@@ -466,17 +481,19 @@ class MoexChartsWidget(QWidget):
         # Включаем кнопку экспорта
         self.export_button.setEnabled(True)
 
-        QMessageBox.information(
-            self,
-            "Успех",
-            f"Загружено {len(self._data)} записей по {securities_count} ценным бумагам",
-        )
+        # Эмитируем сигнал для уведомлений
+        self.parse_finished.emit({
+            "records": len(self._data),
+            "securities": securities_count,
+            "bank": bank_name
+        })
 
     def _on_parse_error(self, error: str):
         """Обработчик ошибки парсинга."""
         self.parse_button.setEnabled(True)
         self.parse_button.setText("Парсить данные")
-        QMessageBox.critical(self, "Ошибка", f"Ошибка парсинга: {error}")
+        # Эмитируем сигнал для уведомлений
+        self.parse_error.emit(error)
 
     def _update_security_combo(self):
         """Обновляет комбобокс с ценными бумагами."""
@@ -575,7 +592,18 @@ class MoexChartsWidget(QWidget):
 
         # График 1: Цены закрытия / OHLC / Объемы
         self.price_figure.clear()
+        # Применяем цвет фона из темы
+        self.price_figure.patch.set_facecolor(self._theme_colors["background"])
         ax1 = self.price_figure.add_subplot(111)
+        ax1.set_facecolor(self._theme_colors["background"])
+        ax1.tick_params(colors=self._theme_colors["text"])
+        ax1.xaxis.label.set_color(self._theme_colors["text"])
+        ax1.yaxis.label.set_color(self._theme_colors["text"])
+        ax1.title.set_color(self._theme_colors["text"])
+        ax1.spines['bottom'].set_color(self._theme_colors["axes"])
+        ax1.spines['top'].set_color(self._theme_colors["axes"])
+        ax1.spines['right'].set_color(self._theme_colors["axes"])
+        ax1.spines['left'].set_color(self._theme_colors["axes"])
 
         if chart_type == "Цены закрытия" and "close" in filtered_data.columns:
             # Если выбрано "Все", показываем все ценные бумаги разными линиями
@@ -602,7 +630,7 @@ class MoexChartsWidget(QWidget):
             ax1.set_xlabel("Дата", fontsize=11)
             ax1.set_ylabel("Цена, RUB", fontsize=11)
             ax1.set_title("Цены закрытия", fontsize=12, fontweight="bold")
-            ax1.grid(True, alpha=0.3)
+            ax1.grid(True, alpha=0.3, color=self._theme_colors["grid"])
 
         elif chart_type == "OHLC" and all(
             col in filtered_data.columns for col in ["open", "high", "low", "close"]
@@ -636,7 +664,7 @@ class MoexChartsWidget(QWidget):
             ax1.set_ylabel("Цена, RUB", fontsize=11)
             ax1.set_title("OHLC (Candlestick)", fontsize=12, fontweight="bold")
             ax1.legend(loc="best")
-            ax1.grid(True, alpha=0.3)
+            ax1.grid(True, alpha=0.3, color=self._theme_colors["grid"])
 
         elif chart_type == "Объемы" and "volume" in filtered_data.columns:
             # График объемов
@@ -650,7 +678,7 @@ class MoexChartsWidget(QWidget):
             ax1.set_xlabel("Дата", fontsize=11)
             ax1.set_ylabel("Объем", fontsize=11)
             ax1.set_title("Объемы торгов", fontsize=12, fontweight="bold")
-            ax1.grid(True, alpha=0.3)
+            ax1.grid(True, alpha=0.3, color=self._theme_colors["grid"])
         else:
             # Если нет данных для выбранного типа - просто пустой график
             ax1.axis("off")
@@ -664,7 +692,18 @@ class MoexChartsWidget(QWidget):
 
         # График 2: Доходность (всегда показываем для выбранной бумаги)
         self.returns_figure.clear()
+        # Применяем цвет фона из темы
+        self.returns_figure.patch.set_facecolor(self._theme_colors["background"])
         ax2 = self.returns_figure.add_subplot(111)
+        ax2.set_facecolor(self._theme_colors["background"])
+        ax2.tick_params(colors=self._theme_colors["text"])
+        ax2.xaxis.label.set_color(self._theme_colors["text"])
+        ax2.yaxis.label.set_color(self._theme_colors["text"])
+        ax2.title.set_color(self._theme_colors["text"])
+        ax2.spines['bottom'].set_color(self._theme_colors["axes"])
+        ax2.spines['top'].set_color(self._theme_colors["axes"])
+        ax2.spines['right'].set_color(self._theme_colors["axes"])
+        ax2.spines['left'].set_color(self._theme_colors["axes"])
 
         if "close" in filtered_data.columns and len(filtered_data) > 1:
             # Если выбрано "Все", показываем доходность для первой бумаги
@@ -695,7 +734,7 @@ class MoexChartsWidget(QWidget):
                     "Доходность по цене закрытия", fontsize=12, fontweight="bold"
                 )
                 ax2.legend(loc="best")
-                ax2.grid(True, alpha=0.3)
+                ax2.grid(True, alpha=0.3, color=self._theme_colors["grid"])
 
                 # Применяем форматирование оси X
                 ax2.xaxis.set_major_formatter(date_format)
@@ -704,6 +743,21 @@ class MoexChartsWidget(QWidget):
 
         self.returns_figure.tight_layout()
         self.returns_canvas.draw()
+
+    def update_theme_colors(self, theme_colors: dict):
+        """
+        Обновляет цвета графиков в соответствии с темой.
+        
+        Args:
+            theme_colors: Словарь с цветами темы (background, text, grid, axes)
+        """
+        self._theme_colors = theme_colors
+        # Обновляем графики, если они уже отображены
+        if self._data is not None and not self._data.empty:
+            self._update_charts()
+        else:
+            # Если данных нет, обновляем фон placeholder'ов
+            self._show_placeholder()
 
     def _update_table(self):
         """Обновляет таблицу с данными."""

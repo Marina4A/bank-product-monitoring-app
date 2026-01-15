@@ -77,3 +77,13 @@ class ChartsWidget(QWidget):
         # Здесь должна быть логика создания и обновления графиков
         # Можно использовать matplotlib, pyqtgraph или другие библиотеки
         pass
+    
+    def update_theme_colors(self, theme_colors: dict):
+        """
+        Обновляет цвета графиков в соответствии с темой.
+        
+        Args:
+            theme_colors: Словарь с цветами темы (background, text, grid, axes)
+        """
+        # TODO: Применить цвета темы, когда графики будут реализованы
+        pass

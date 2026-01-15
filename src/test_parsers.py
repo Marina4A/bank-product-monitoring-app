@@ -1198,7 +1198,7 @@ async def run_banki_ratings_parser():
 
 def main():
     try:
-        asyncio.run(run_banki_ratings_parser())
+        asyncio.run(run_sberbank_debit_card_parser())
 
     except KeyboardInterrupt:
         print("\nПрервано пользователем")

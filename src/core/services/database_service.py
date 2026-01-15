@@ -1,6 +1,7 @@
 """Сервис для работы с базой данных."""
 
 import asyncio
+import re
 from datetime import datetime, timedelta
 from typing import List
 from uuid import uuid4
@@ -25,27 +26,88 @@ class DatabaseService:
         # Создаем таблицы при инициализации
         self.db_manager.create_tables()
 
+    def _normalize_string(self, value: str | None) -> str | None:
+        """
+        Нормализует строку для безопасной записи в БД.
+        Удаляет недопустимые последовательности байт и приводит к UTF-8.
+        
+        Args:
+            value: Строка для нормализации
+            
+        Returns:
+            Нормализованная строка или None
+        """
+        if value is None:
+            return None
+        
+        if not isinstance(value, str):
+            try:
+                value = str(value)
+            except Exception:
+                return None
+        
+        try:
+            # Если это bytes, пробуем декодировать
+            if isinstance(value, bytes):
+                # Сначала пробуем UTF-8
+                try:
+                    value = value.decode('utf-8', errors='strict')
+                except UnicodeDecodeError:
+                    # Если не получается, пробуем Windows-1251 (частая проблема)
+                    try:
+                        value = value.decode('windows-1251', errors='replace')
+                    except Exception:
+                        # В крайнем случае используем replace для замены проблемных символов
+                        value = value.decode('utf-8', errors='replace')
+            
+            # Удаляем проблемные последовательности байт
+            # 0xc2 0xc0 - это часто встречающаяся проблема при конвертации из Windows-1251
+            # Удаляем их как строку и как байты
+            value = value.replace('\xc2\xc0', '')
+            value = value.replace('\x00', '')  # Нулевые байты
+            value = value.replace('\ufffd', '')  # Символ замены Unicode
+            
+            # Пробуем перекодировать для очистки проблемных последовательностей
+            try:
+                # Кодируем в UTF-8 и декодируем обратно для проверки
+                value_bytes = value.encode('utf-8', errors='replace')
+                value = value_bytes.decode('utf-8', errors='replace')
+            except Exception:
+                pass
+            
+            # Удаляем все непечатаемые символы кроме пробелов и переносов строк
+            # Оставляем только печатаемые символы, пробелы, переносы строк и табуляции
+            value = re.sub(r'[^\x20-\x7E\n\r\t\u00A0-\uFFFF]', '', value)
+            
+            return value.strip() if value else None
+        except Exception as e:
+            # В случае ошибки возвращаем None
+            print(f"Ошибка нормализации строки: {e}, значение: {repr(value[:50])}")
+            return None
+
     def _bank_product_to_db(self, product: BankProduct) -> BankProductDB:
         """Конвертирует BankProduct в BankProductDB."""
         return BankProductDB(
             id=product.id,
-            bank=product.bank,
-            bank_logo=product.bank_logo,
-            product=product.product,
+            bank=self._normalize_string(product.bank) or "",
+            bank_logo=self._normalize_string(product.bank_logo),
+            product=self._normalize_string(product.product) or "",
             category=product.category,
             rate_min=product.rate_min,
             rate_max=product.rate_max,
             amount_min=product.amount_min,
             amount_max=product.amount_max,
-            term=product.term,
+            term=self._normalize_string(product.term),
             currency=product.currency,
             confidence=product.confidence,
-            grace_period=product.grace_period,
-            cashback=product.cashback,
-            commission=product.commission,
+            grace_period=self._normalize_string(product.grace_period),
+            cashback=self._normalize_string(product.cashback),
+            commission=self._normalize_string(product.commission),
             collected_at=product.collected_at,
             unique_key=BankProductDB.create_unique_key(
-                product.bank, product.product, product.category
+                self._normalize_string(product.bank) or "",
+                self._normalize_string(product.product) or "",
+                product.category
             ),
             is_active=True,
         )
@@ -124,21 +186,21 @@ class DatabaseService:
                     )
 
                     if existing:
-                        # Обновляем существующую запись
-                        existing.bank = product.bank
-                        existing.bank_logo = product.bank_logo
-                        existing.product = product.product
+                        # Обновляем существующую запись с нормализацией строк
+                        existing.bank = self._normalize_string(product.bank) or ""
+                        existing.bank_logo = self._normalize_string(product.bank_logo)
+                        existing.product = self._normalize_string(product.product) or ""
                         existing.category = product.category
                         existing.rate_min = product.rate_min
                         existing.rate_max = product.rate_max
                         existing.amount_min = product.amount_min
                         existing.amount_max = product.amount_max
-                        existing.term = product.term
+                        existing.term = self._normalize_string(product.term)
                         existing.currency = product.currency
                         existing.confidence = product.confidence
-                        existing.grace_period = product.grace_period
-                        existing.cashback = product.cashback
-                        existing.commission = product.commission
+                        existing.grace_period = self._normalize_string(product.grace_period)
+                        existing.cashback = self._normalize_string(product.cashback)
+                        existing.commission = self._normalize_string(product.commission)
                         existing.collected_at = product.collected_at
                         existing.updated_at = datetime.now()
                         existing.is_active = True
@@ -154,8 +216,19 @@ class DatabaseService:
 
                 session.commit()
                 return saved_count
+            except UnicodeEncodeError as e:
+                session.rollback()
+                print(f"Ошибка кодировки при сохранении продуктов: {e}")
+                # Пробуем сохранить с более агрессивной нормализацией
+                # Это не должно происходить, так как нормализация уже применена
+                raise ValueError(f"Ошибка кодировки данных: {e}. Проверьте исходные данные.")
             except Exception as e:
                 session.rollback()
+                # Проверяем, не связана ли ошибка с кодировкой
+                error_msg = str(e).lower()
+                if 'encoding' in error_msg or 'utf8' in error_msg or 'utf-8' in error_msg:
+                    print(f"Ошибка кодировки при сохранении: {e}")
+                    raise ValueError(f"Ошибка кодировки данных: {e}. Убедитесь, что все строки в UTF-8.")
                 raise e
             finally:
                 session.close()

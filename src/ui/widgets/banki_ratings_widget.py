@@ -6,14 +6,12 @@
 """
 
 import asyncio
-import re
 from typing import Any, Optional
 
-from PyQt6.QtCore import Qt, QDate, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor, QIntValidator
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDateEdit,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -31,17 +29,15 @@ from core.parsers.banki_ratings import BankiRatingsParser
 
 
 class NumericTableWidgetItem(QTableWidgetItem):
-    """Элемент таблицы для числовой сортировки."""
-
+    """QTableWidgetItem, который сортируется как число."""
+    
+    def __init__(self, text: str, value: int):
+        super().__init__(text)
+        self._numeric_value = value
+    
     def __lt__(self, other):
-        """Переопределяем сравнение для числовой сортировки."""
         if isinstance(other, NumericTableWidgetItem):
-            self_value = self.data(Qt.ItemDataRole.UserRole)
-            other_value = other.data(Qt.ItemDataRole.UserRole)
-            try:
-                return float(self_value or 0) < float(other_value or 0)
-            except (ValueError, TypeError):
-                return super().__lt__(other)
+            return self._numeric_value < other._numeric_value
         return super().__lt__(other)
 
 
@@ -57,6 +53,7 @@ class BankiRatingsWidget(QWidget):
         super().__init__(parent)
         self._ratings_data: Optional[dict[str, Any]] = None
         self._all_ratings: list[dict[str, Any]] = []  # Все загруженные рейтинги
+        self._parsing_in_progress = False  # Флаг для предотвращения одновременного парсинга
         self._setup_ui()
 
     def _setup_ui(self):
@@ -70,7 +67,7 @@ class BankiRatingsWidget(QWidget):
         header_frame.setFrameShape(QFrame.Shape.StyledPanel)
         header_layout = QVBoxLayout(header_frame)
 
-        title_label = QLabel("Рейтинги банков")
+        title_label = QLabel("Рейтинги банков (Banki.ru)")
         title_font = title_label.font()
         title_font.setPointSize(14)
         title_font.setBold(True)
@@ -102,8 +99,6 @@ class BankiRatingsWidget(QWidget):
         self.place_filter_min.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.place_filter_min.lineEdit().setPlaceholderText("От")
         self.place_filter_min.lineEdit().setValidator(QIntValidator(1, 10000, self))
-        # Используем textChanged от lineEdit() вместо currentTextChanged для редактируемого QComboBox
-        # Это гарантирует, что сигнал срабатывает только при изменении введенного текста
         self.place_filter_min.lineEdit().textChanged.connect(self._on_place_filter_changed)
         control_layout.addWidget(self.place_filter_min)
 
@@ -114,7 +109,6 @@ class BankiRatingsWidget(QWidget):
         self.place_filter_max.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.place_filter_max.lineEdit().setPlaceholderText("До")
         self.place_filter_max.lineEdit().setValidator(QIntValidator(1, 10000, self))
-        # Используем textChanged от lineEdit() вместо currentTextChanged для редактируемого QComboBox
         self.place_filter_max.lineEdit().textChanged.connect(self._on_place_filter_changed)
         control_layout.addWidget(self.place_filter_max)
 
@@ -137,25 +131,11 @@ class BankiRatingsWidget(QWidget):
 
         control_layout.addSpacing(20)
 
-        # Дата 1 (начальная)
-        control_layout.addWidget(QLabel("Дата 1:"))
-        self.date1_edit = QDateEdit()
-        self.date1_edit.setCalendarPopup(True)
-        # Устанавливаем дату по умолчанию (декабрь 2025)
-        default_date1 = QDate(2025, 12, 1)
-        self.date1_edit.setDate(default_date1)
-        self.date1_edit.setDisplayFormat("dd.MM.yyyy")
-        control_layout.addWidget(self.date1_edit)
-
-        # Дата 2 (конечная)
-        control_layout.addWidget(QLabel("Дата 2:"))
-        self.date2_edit = QDateEdit()
-        self.date2_edit.setCalendarPopup(True)
-        # Устанавливаем дату по умолчанию (ноябрь 2025)
-        default_date2 = QDate(2025, 11, 1)
-        self.date2_edit.setDate(default_date2)
-        self.date2_edit.setDisplayFormat("dd.MM.yyyy")
-        control_layout.addWidget(self.date2_edit)
+        # Период - выбор месяца и года (данные на конец выбранного месяца)
+        control_layout.addWidget(QLabel("Период:"))
+        self.date_combo = QComboBox()
+        self._populate_month_combo(self.date_combo)
+        control_layout.addWidget(self.date_combo)
 
         control_layout.addStretch()
 
@@ -213,11 +193,75 @@ class BankiRatingsWidget(QWidget):
 
         layout.addWidget(stats_frame)
 
+    def _populate_month_combo(self, combo: QComboBox):
+        """
+        Заполняет ComboBox месяцами и годами, как на сайте Banki.ru.
+
+        Args:
+            combo: QComboBox для заполнения
+        """
+        from datetime import datetime
+        today = datetime.now()
+
+        # Генерируем список месяцев от текущего до 2012 года
+        months_ru = [
+            "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+            "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+        ]
+
+        items = []
+        current_year = today.year
+        current_month = today.month
+
+        # Генерируем все месяцы от текущего до 2012 года
+        # Для удобства пользователя: сначала более поздние даты (сверху), потом более ранние
+        for year in range(current_year, 2011, -1):  # От текущего года к 2012
+            start_month = current_month if year == current_year else 12
+            end_month = 1
+            for month in range(start_month, end_month - 1, -1):  # От текущего/12 месяца к 1
+                month_name = months_ru[month - 1]
+                date_value = f"{year}-{month:02d}-01"
+                display_text = f"{month_name} {year}"  # Формат как на сайте: "Декабрь 2025"
+                items.append((display_text, date_value))
+
+        # Добавляем элементы в ComboBox
+        for display_text, date_value in items:
+            combo.addItem(display_text, date_value)
+
+        # Устанавливаем значение по умолчанию - текущий месяц
+        default_value = f"{current_year}-{current_month:02d}-01"
+
+        # Находим индекс по умолчанию
+        for i in range(combo.count()):
+            if combo.itemData(i) == default_value:
+                combo.setCurrentIndex(i)
+                break
+
     def _on_parse_clicked(self):
         """Обработчик нажатия на кнопку парсинга."""
         # Формируем URL на основе параметров
-        date1_str = self.date1_edit.date().toString("yyyy-MM-dd")
-        date2_str = self.date2_edit.date().toString("yyyy-MM-dd")
+        # date1 - выбранный период (месяц и год, данные на конец месяца)
+        # date2 - предыдущий месяц (автоматически для сравнения)
+        from datetime import datetime
+
+        date1_value = self.date_combo.currentData()  # Выбранный период
+
+        # Вычисляем date2 (предыдущий месяц) для сравнения
+        # Парсим дату из формата "YYYY-MM-01"
+        date1_parts = date1_value.split("-")
+        year = int(date1_parts[0])
+        month = int(date1_parts[1])
+
+        # Вычисляем предыдущий месяц
+        if month == 1:
+            prev_year = year - 1
+            prev_month = 12
+        else:
+            prev_year = year
+            prev_month = month - 1
+
+        date2_str = f"{prev_year}-{prev_month:02d}-01"
+        date1_str = date1_value
 
         # Получаем PROPERTY_ID из маппинга
         indicator = self.indicator_combo.currentText()
@@ -230,11 +274,16 @@ class BankiRatingsWidget(QWidget):
             # Для "Активы нетто" PROPERTY_ID не указывается (по умолчанию)
             url = f"{base_url}?sort_param=bankname&date1={date1_str}&date2={date2_str}"
 
+        # Проверяем, не идет ли уже парсинг
+        if self._parsing_in_progress:
+            QMessageBox.warning(self, "Внимание", "Парсинг уже выполняется. Дождитесь завершения.")
+            return
+
         # Показываем прогресс
         self.parse_button.setEnabled(False)
         self.parse_button.setText("Парсинг...")
         self.progress_bar.setVisible(True)
-        # self.metadata_label.setText(f"Парсинг рейтингов... URL: {url}")
+        self.metadata_label.setText(f"Парсинг рейтингов...")
 
         # Очищаем таблицу
         self.ratings_table.setRowCount(0)
@@ -242,8 +291,26 @@ class BankiRatingsWidget(QWidget):
         # Эмитируем сигнал начала парсинга
         self.parse_started.emit()
 
-        # Запускаем асинхронный парсинг
-        asyncio.create_task(self._parse_async(url))
+        # Запускаем асинхронный парсинг через qasync
+        # qasync интегрирован с Qt event loop, можно использовать asyncio.create_task
+        # Но нужно убедиться, что мы не создаем несколько задач одновременно
+        self._parsing_in_progress = True
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Если loop уже запущен (что обычно так и есть с qasync), создаем задачу
+                asyncio.create_task(self._parse_async(url))
+            else:
+                # Если loop не запущен (не должно происходить с qasync), запускаем его
+                loop.run_until_complete(self._parse_async(url))
+        except RuntimeError as e:
+            # Если нет event loop или другая ошибка, логируем и показываем ошибку
+            print(f"Ошибка при создании задачи: {e}")
+            self._parsing_in_progress = False
+            self.parse_button.setEnabled(True)
+            self.parse_button.setText("Парсить рейтинги")
+            self.progress_bar.setVisible(False)
+            QMessageBox.critical(self, "Ошибка", f"Не удалось запустить парсинг: {e}")
 
     async def _parse_async(self, url: str):
         """Асинхронный парсинг данных."""
@@ -251,12 +318,17 @@ class BankiRatingsWidget(QWidget):
             async with BankiRatingsParser(headless=True) as parser:
                 data = await parser.parse_page(url)
                 self._ratings_data = data
+            
+            # Небольшая задержка после закрытия парсера для завершения всех внутренних задач Playwright
+            # Это предотвращает RuntimeError при обновлении UI
+            await asyncio.sleep(0.3)
+            
+            # Обновляем UI в главном потоке через QTimer
+            # Это гарантирует выполнение в главном потоке Qt и предотвращает конфликты с Playwright
+            QTimer.singleShot(0, lambda: self._update_ui_with_data(data))
 
-                # Обновляем UI в главном потоке через qasync
-                self._update_ui_with_data(data)
-
-                # Эмитируем сигнал завершения парсинга
-                self.parse_finished.emit(data)
+            # Эмитируем сигнал завершения парсинга
+            QTimer.singleShot(0, lambda: self.parse_finished.emit(data))
 
         except Exception as e:
             error_msg = f"Ошибка при парсинге: {str(e)}"
@@ -264,17 +336,26 @@ class BankiRatingsWidget(QWidget):
             import traceback
             traceback.print_exc()
 
-            # Обновляем UI в главном потоке
-            self._show_error(error_msg)
+            # Небольшая задержка перед обновлением UI
+            await asyncio.sleep(0.3)
+
+            # Обновляем UI в главном потоке через QTimer
+            QTimer.singleShot(0, lambda: self._show_error(error_msg))
 
             # Эмитируем сигнал ошибки
-            self.parse_error.emit(error_msg)
+            QTimer.singleShot(0, lambda: self.parse_error.emit(error_msg))
 
         finally:
-            # Восстанавливаем кнопку и скрываем прогресс
-            self.parse_button.setEnabled(True)
-            self.parse_button.setText("Парсить рейтинги")
-            self.progress_bar.setVisible(False)
+            # Сбрасываем флаг парсинга
+            self._parsing_in_progress = False
+            
+            # Обновляем UI в главном потоке через QTimer
+            def update_ui_after_parsing():
+                self.parse_button.setEnabled(True)
+                self.parse_button.setText("Парсить рейтинги")
+                self.progress_bar.setVisible(False)
+            
+            QTimer.singleShot(0, update_ui_after_parsing)
 
     def _update_ui_with_data(self, data: dict[str, Any]):
         """Обновляет UI с полученными данными."""
@@ -284,16 +365,15 @@ class BankiRatingsWidget(QWidget):
 
         if metadata.get('indicator'):
             metadata_text += f" | Показатель: {metadata['indicator']}"
+        # Отображаем выбранный период (date1 - основной период)
         if metadata.get('date1'):
-            date1_display = metadata['date1'].get('display', metadata['date1'].get('value', ''))
-            metadata_text += f" | Дата 1: {date1_display}"
-        if metadata.get('date2'):
-            date2_display = metadata['date2'].get('display', metadata['date2'].get('value', ''))
-            metadata_text += f" | Дата 2: {date2_display}"
+            date_display = metadata['date1'].get('display', metadata['date1'].get('value', ''))
+            metadata_text += f" | Период: {date_display}"
         if metadata.get('region'):
             metadata_text += f" | Регион: {metadata['region']}"
 
-        metadata_text += f" | Всего банков: {data.get('total_banks', 0)} | Страниц: {data.get('total_pages', 0)}"
+        total_banks = data.get('total_banks', 0)
+        metadata_text += f" | Всего банков: {total_banks} | Страниц: {data.get('total_pages', 0)}"
 
         self.metadata_label.setText(metadata_text)
 
@@ -302,6 +382,8 @@ class BankiRatingsWidget(QWidget):
 
         # Применяем фильтрацию и отображаем данные
         self._apply_filters_and_display()
+        
+        # Сигнал parse_finished уже эмитируется в _parse_async, не нужно дублировать
 
     def _on_header_clicked(self, column: int):
         """Обработчик клика по заголовку колонки."""
@@ -309,81 +391,43 @@ class BankiRatingsWidget(QWidget):
         # Этот метод может быть использован для дополнительной логики
         pass
 
-    def _on_place_filter_changed(self, text: str = ""):
+    def _on_place_filter_changed(self):
         """Обработчик изменения фильтра по месту в рейтинге."""
-        # Сигнал textChanged от lineEdit() срабатывает при изменении текста
-        # text - это новый текст, но мы все равно используем lineEdit().text() для надежности
         if self._all_ratings:
             self._apply_filters_and_display()
 
     def _apply_filters_and_display(self):
         """Применяет фильтры к данным и отображает результат."""
-        # Получаем значения фильтров из полей ввода
-        # Используем lineEdit().text() для получения введенного текста, а не currentText()
-        # currentText() возвращает текст выбранного элемента из списка, а не введенный текст
+        # Фильтруем по месту в рейтинге
+        filtered_ratings = self._all_ratings.copy()
+
+        # Получаем значения фильтров
         min_place_text = self.place_filter_min.lineEdit().text().strip()
+        max_place_text = self.place_filter_max.lineEdit().text().strip()
+        
         min_place = None
+        max_place = None
+        
         if min_place_text:
             try:
                 min_place = int(min_place_text)
-                # Убеждаемся, что значение валидно
-                if min_place < 1:
-                    min_place = None
-            except ValueError:
-                min_place = None
+            except (ValueError, TypeError):
+                pass
 
-        max_place_text = self.place_filter_max.lineEdit().text().strip()
-        max_place = None
         if max_place_text:
             try:
                 max_place = int(max_place_text)
-                # Убеждаемся, что значение валидно
-                if max_place < 1:
-                    max_place = None
-            except ValueError:
-                max_place = None
+            except (ValueError, TypeError):
+                pass
 
-        # Если фильтры не заданы, показываем все данные
-        if min_place is None and max_place is None:
-            filtered_ratings = self._all_ratings.copy()
-        else:
-            # Применяем фильтры
-            filtered_ratings = []
-            for r in self._all_ratings:
-                place = r.get('place')
-                # Пропускаем записи без места в рейтинге
-                if place is None:
-                    continue
-                
-                # Преобразуем place в int, если это не int
-                # Убеждаемся, что place - это число, а не строка
-                try:
-                    if isinstance(place, str):
-                        # Убираем все нецифровые символы из начала строки
-                        place_clean = place.strip()
-                        # Извлекаем первое число из строки
-                        match = re.search(r'\d+', place_clean)
-                        if match:
-                            place_int = int(match.group())
-                        else:
-                            continue
-                    elif isinstance(place, (int, float)):
-                        place_int = int(place)
-                    else:
-                        continue
-                except (ValueError, TypeError):
-                    continue
-                
-                # Применяем фильтры: место должно быть >= min_place И <= max_place
-                # Проверяем каждый фильтр отдельно
-                if min_place is not None:
-                    if place_int < min_place:
-                        continue
-                if max_place is not None:
-                    if place_int > max_place:
-                        continue
-                
-                filtered_ratings.append(r)
+        # Применяем оба фильтра одновременно для корректной работы
+        if min_place is not None or max_place is not None:
+            filtered_ratings = [
+                r for r in filtered_ratings
+                if r.get('place') is not None
+                and (min_place is None or int(r.get('place')) >= min_place)
+                and (max_place is None or int(r.get('place')) <= max_place)
+            ]
 
         # Отображаем отфильтрованные данные
         self._display_ratings(filtered_ratings)
@@ -395,10 +439,13 @@ class BankiRatingsWidget(QWidget):
         for row, rating in enumerate(ratings):
             # Место в рейтинге (только число, целое) - используем NumericTableWidgetItem для правильной сортировки
             place_value = rating.get('place', 0)
-            place_text = str(int(place_value)) if place_value else ""
-            place_item = NumericTableWidgetItem(place_text)
-            # Для сортировки используем целое число
-            place_item.setData(Qt.ItemDataRole.UserRole, int(place_value) if place_value else 0)
+            if place_value:
+                place_int = int(place_value)
+                place_text = str(place_int)
+            else:
+                place_int = 0
+                place_text = ""
+            place_item = NumericTableWidgetItem(place_text, place_int)
             self.ratings_table.setItem(row, 0, place_item)
 
             # Название банка
@@ -416,24 +463,24 @@ class BankiRatingsWidget(QWidget):
             region_item = QTableWidgetItem(rating.get('region', ''))
             self.ratings_table.setItem(row, 3, region_item)
 
-            # Значение (руб.) - оставляем как есть, только с разделителями тысяч - используем NumericTableWidgetItem для правильной сортировки
+            # Значение (руб.) - оставляем как есть, только с разделителями тысяч
             value_date1 = rating.get('value_date1')
             if value_date1 is not None:
                 value_date1_text = self._format_value_rub(value_date1)
-                value_date1_item = NumericTableWidgetItem(value_date1_text)
+                value_date1_item = QTableWidgetItem(value_date1_text)
                 # Для сортировки используем числовое значение
                 value_date1_item.setData(Qt.ItemDataRole.UserRole, float(value_date1))
                 self.ratings_table.setItem(row, 4, value_date1_item)
             else:
-                empty_item = NumericTableWidgetItem("")
+                empty_item = QTableWidgetItem("")
                 empty_item.setData(Qt.ItemDataRole.UserRole, 0.0)
                 self.ratings_table.setItem(row, 4, empty_item)
 
-            # Изменение (руб.) - форматируем как +1 250 801 (без сокращений) - используем NumericTableWidgetItem для правильной сортировки
+            # Изменение (руб.) - форматируем как +1 250 801 (без сокращений)
             change_abs = rating.get('change_absolute')
             if change_abs is not None:
                 change_abs_text = self._format_change_rub(change_abs)
-                change_abs_item = NumericTableWidgetItem(change_abs_text)
+                change_abs_item = QTableWidgetItem(change_abs_text)
                 # Для сортировки используем числовое значение
                 change_abs_item.setData(Qt.ItemDataRole.UserRole, float(change_abs))
                 # Цвет в зависимости от типа изменения
@@ -443,7 +490,7 @@ class BankiRatingsWidget(QWidget):
                     change_abs_item.setForeground(QColor(220, 20, 60))  # Красный
                 self.ratings_table.setItem(row, 5, change_abs_item)
             else:
-                empty_item = NumericTableWidgetItem("")
+                empty_item = QTableWidgetItem("")
                 empty_item.setData(Qt.ItemDataRole.UserRole, 0.0)
                 self.ratings_table.setItem(row, 5, empty_item)
 

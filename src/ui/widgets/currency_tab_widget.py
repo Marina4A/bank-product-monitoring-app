@@ -38,3 +38,13 @@ class CurrencyTabWidget(QWidget):
         self.tab_widget.addTab(self.history_widget, "История валют")
 
         layout.addWidget(self.tab_widget)
+    
+    def update_theme_colors(self, theme_colors: dict):
+        """
+        Обновляет цвета графиков в соответствии с темой.
+        
+        Args:
+            theme_colors: Словарь с цветами темы (background, text, grid, axes)
+        """
+        if hasattr(self, 'history_widget') and self.history_widget:
+            self.history_widget.update_theme_colors(theme_colors)

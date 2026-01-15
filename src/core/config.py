@@ -2,6 +2,7 @@
 
 import os
 from typing import Optional
+from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 
@@ -23,9 +24,15 @@ class DatabaseConfig:
     @property
     def database_url(self) -> str:
         """Возвращает URL подключения к БД."""
+        # Экранируем специальные символы в пароле и имени пользователя для URL
+        # Это предотвращает ошибки кодировки при подключении
+        safe_user = quote_plus(self.user)
+        safe_password = quote_plus(self.password)
+        safe_database = quote_plus(self.database)
+        
         return (
-            f"postgresql://{self.user}:{self.password}@"
-            f"{self.host}:{self.port}/{self.database}"
+            f"postgresql://{safe_user}:{safe_password}@"
+            f"{self.host}:{self.port}/{safe_database}"
         )
 
     def validate(self) -> bool:

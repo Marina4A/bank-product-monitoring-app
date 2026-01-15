@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -51,9 +52,60 @@ class BankProduct:
     cashback: Optional[str] = None
     commission: Optional[str] = None
 
+    def _normalize_string_field(self, value: str | None) -> str | None:
+        """
+        Нормализует строковое поле для безопасной записи в БД.
+        Удаляет недопустимые последовательности байт и приводит к UTF-8.
+        """
+        if value is None:
+            return None
+
+        if not isinstance(value, str):
+            try:
+                value = str(value)
+            except Exception:
+                return None
+
+        try:
+            # Если это bytes, пробуем декодировать
+            if isinstance(value, bytes):
+                try:
+                    value = value.decode('utf-8', errors='strict')
+                except UnicodeDecodeError:
+                    try:
+                        value = value.decode('windows-1251', errors='replace')
+                    except Exception:
+                        value = value.decode('utf-8', errors='replace')
+
+            # Удаляем проблемные последовательности байт
+            value = value.replace('\xc2\xc0', '').replace('\x00', '').replace('\ufffd', '')
+
+            # Перекодируем для очистки
+            try:
+                value_bytes = value.encode('utf-8', errors='replace')
+                value = value_bytes.decode('utf-8', errors='replace')
+            except Exception:
+                pass
+
+            # Удаляем непечатаемые символы
+            value = re.sub(r'[^\x20-\x7E\n\r\t\u00A0-\uFFFF]', '', value)
+
+            return value.strip() if value else None
+        except Exception:
+            return None
+
     def __post_init__(self):
         if self.collected_at is None:
             self.collected_at = datetime.now()
+
+        # Нормализуем все строковые поля при создании объекта
+        self.bank = self._normalize_string_field(self.bank) or ""
+        self.bank_logo = self._normalize_string_field(self.bank_logo)
+        self.product = self._normalize_string_field(self.product) or ""
+        self.term = self._normalize_string_field(self.term) or ""
+        self.grace_period = self._normalize_string_field(self.grace_period)
+        self.cashback = self._normalize_string_field(self.cashback)
+        self.commission = self._normalize_string_field(self.commission)
 
 
 @dataclass

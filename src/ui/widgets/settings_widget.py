@@ -73,10 +73,6 @@ class SettingsWidget(QWidget):
         notifications_group = QGroupBox("Уведомления")
         notifications_layout = QVBoxLayout()
 
-        self.enable_notifications_check = QCheckBox("Включить уведомления")
-        self.enable_notifications_check.setChecked(True)
-        notifications_layout.addWidget(self.enable_notifications_check)
-
         self.notify_new_data_check = QCheckBox("Уведомлять при обновлении данных")
         self.notify_new_data_check.setChecked(True)
         notifications_layout.addWidget(self.notify_new_data_check)
@@ -126,6 +122,16 @@ class SettingsWidget(QWidget):
         # Отображение
         display_group = QGroupBox("Отображение")
         display_layout = QVBoxLayout()
+
+        # Тема приложения
+        theme_layout = QHBoxLayout()
+        theme_layout.addWidget(QLabel("Тема приложения:"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Светлая", "Темная"])
+        self.theme_combo.setCurrentText("Светлая")
+        theme_layout.addWidget(self.theme_combo)
+        theme_layout.addStretch()
+        display_layout.addLayout(theme_layout)
 
         page_size_layout = QHBoxLayout()
         page_size_layout.addWidget(QLabel("Строк на странице:"))
@@ -180,7 +186,6 @@ class SettingsWidget(QWidget):
             "update_interval": self.update_interval_spin.value(),
             "timeout": self.timeout_spin.value(),
             "retries": self.retries_spin.value(),
-            "enable_notifications": self.enable_notifications_check.isChecked(),
             "notify_on_new_data": self.notify_new_data_check.isChecked(),
             "notify_on_errors": self.notify_errors_check.isChecked(),
             "default_bank": self.default_bank_combo.currentText(),
@@ -189,6 +194,7 @@ class SettingsWidget(QWidget):
             "page_size": int(self.page_size_combo.currentText()),
             "auto_refresh": self.auto_refresh_check.isChecked(),
             "auto_refresh_interval": self.auto_refresh_interval_spin.value(),
+            "theme": self.theme_combo.currentText(),  # Добавляем тему
         }
 
     def set_settings(self, settings: dict) -> None:
@@ -196,11 +202,9 @@ class SettingsWidget(QWidget):
         self.update_interval_spin.setValue(settings.get("update_interval", 60))
         self.timeout_spin.setValue(settings.get("timeout", 30))
         self.retries_spin.setValue(settings.get("retries", 3))
-        self.enable_notifications_check.setChecked(
-            settings.get("enable_notifications", True)
-        )
         self.notify_new_data_check.setChecked(settings.get("notify_on_new_data", True))
         self.notify_errors_check.setChecked(settings.get("notify_on_errors", True))
+        self.theme_combo.setCurrentText(settings.get("theme", "Светлая"))
         # ... и т.д.
 
     def _on_save(self) -> None:

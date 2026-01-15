@@ -192,21 +192,36 @@ class BaseParser(ABC):
 
     async def close(self) -> None:
         """Закрыть браузер и освободить ресурсы."""
-        if self._page:
-            await self._page.close()
-            self._page = None
+        try:
+            if self._page:
+                await self._page.close()
+                self._page = None
+        except Exception:
+            pass
 
-        if self._context:
-            await self._context.close()
-            self._context = None
+        try:
+            if self._context:
+                await self._context.close()
+                self._context = None
+        except Exception:
+            pass
 
-        if self._browser:
-            await self._browser.close()
-            self._browser = None
+        try:
+            if self._browser:
+                await self._browser.close()
+                self._browser = None
+        except Exception:
+            pass
 
-        if self._playwright:
-            await self._playwright.stop()
-            self._playwright = None
+        try:
+            if self._playwright:
+                await self._playwright.stop()
+                self._playwright = None
+        except Exception:
+            pass
+        
+        # Небольшая задержка для завершения всех внутренних задач Playwright
+        await asyncio.sleep(0.1)
 
     async def __aenter__(self):
         await self.start()
